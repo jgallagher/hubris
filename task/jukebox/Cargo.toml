@@ -1,0 +1,25 @@
+[package]
+name = "task-jukebox"
+version = "0.1.0"
+edition = "2018"
+build = "build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cortex-m = {version = "0.7", features = ["inline-asm"]}
+userlib = {path = "../../sys/userlib", features = ["panic-messages", "log-itm"]}
+drv-piezo-element-api = {path = "../../drv/piezo-element-api"}
+
+[features]
+default = ["standalone"]
+standalone = []
+
+# a target for `cargo xtask check`
+[package.metadata.build]
+target = "thumbv7em-none-eabihf"
+
+[[bin]]
+name = "task-jukebox"
+test = false
+bench = false

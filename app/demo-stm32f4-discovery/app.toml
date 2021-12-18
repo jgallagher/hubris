@@ -59,7 +59,7 @@ name = "drv-stm32fx-gpio"
 features = ["f411"]
 priority = 2
 requires = {flash = 8192, ram = 1024}
-uses = ["gpiod"]
+uses = ["gpiob", "gpioc", "gpiod"] # TODO: gpioa used by usart
 start = true
 task-slots = ["rcc_driver"]
 
@@ -98,8 +98,9 @@ task-slots = [{peer = "pong"}, "usart_driver"]
 path = "../../task/pong"
 name = "task-pong"
 priority = 3
-requires = {flash = 8192, ram = 1024}
+requires = {flash = 8192, ram = 512}
 start = true
+stacksize = 512
 task-slots = ["user_leds"]
 
 [tasks.hiffy]
@@ -110,10 +111,30 @@ requires = {flash = 32768, ram = 16384 }
 stacksize = 2048
 start = true
 
+[tasks.piezo_element]
+path = "../../drv/piezo-element"
+name = "drv-piezo-element"
+features = ["stm32f4-gpio"]
+priority = 3
+requires = {flash = 8192, ram = 512}
+start = true
+stacksize = 512
+uses = ["tim3"]
+task-slots = ["gpio_driver", "rcc_driver"]
+
+[tasks.jukebox]
+path = "../../task/jukebox"
+name = "task-jukebox"
+priority = 4
+requires = {flash = 8192, ram = 512 }
+stacksize = 512
+start = true
+task-slots = ["piezo_element"]
+
 [tasks.idle]
 path = "../../task/idle"
 name = "task-idle"
-priority = 5
+priority = 200
 requires = {flash = 256, ram = 256}
 stacksize = 256
 start = true
@@ -130,6 +151,18 @@ size = 1024
 address = 0x40020000
 size = 1024
 
+[peripherals.gpiob]
+address = 0x40020400
+size = 1024
+
+[peripherals.gpioc]
+address = 0x40020800
+size = 1024
+
 [peripherals.gpiod]
 address = 0x40020c00
+size = 1024
+
+[peripherals.tim3]
+address = 0x40000400
 size = 1024

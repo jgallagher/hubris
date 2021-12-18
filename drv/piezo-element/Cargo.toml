@@ -1,0 +1,33 @@
+[package]
+name = "drv-piezo-element"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+userlib = {path = "../../sys/userlib", features = ["panic-messages", "log-itm"]}
+cortex-m = {version = "0.7", features = ["inline-asm"]}
+stm32f4 = { version = "0.13.0", features = ["stm32f411"], optional = true }
+zerocopy = "0.6.1"
+num-traits = { version = "0.2.12", default-features = false }
+drv-stm32fx-gpio-api = {path = "../stm32fx-gpio-api", optional = true}
+drv-stm32fx-rcc-api = {path = "../../drv/stm32fx-rcc-api"}
+cfg-if = "0.1.10"
+
+[build-dependencies]
+build-util = {path = "../../build/util"}
+
+[features]
+default = ["standalone"]
+standalone = ["stm32f4-gpio"]
+stm32f4-gpio = ["stm32f4", "drv-stm32fx-gpio-api"]
+
+# a target for `cargo xtask check`
+[package.metadata.build]
+target = "thumbv7em-none-eabihf"
+
+# This section is here to discourage RLS/rust-analyzer from doing test builds,
+# since test builds don't work for cross compilation.
+[[bin]]
+name = "drv-piezo-element"
+test = false
+bench = false

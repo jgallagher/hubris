@@ -37,6 +37,8 @@ members = [
     "task/spd",
     "task/thermal",
 
+    "task/jukebox",
+
     "drv/stm32fx-rcc",
     "drv/stm32fx-rcc-api",
     "drv/stm32fx-usart",
@@ -71,6 +73,8 @@ members = [
     "drv/gimlet-seq-server",
     "drv/gimlet-hf-server",
     "drv/gimlet-hf-api",
+    "drv/piezo-element",
+    "drv/piezo-element-api",
 
     "test/tests-gemini-bu",
     "test/tests-gemini-bu-rot",

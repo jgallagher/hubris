@@ -721,6 +721,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "drv-piezo-element"
+version = "0.1.0"
+dependencies = [
+ "build-util",
+ "cfg-if 0.1.10",
+ "cortex-m",
+ "drv-stm32fx-gpio-api",
+ "drv-stm32fx-rcc-api",
+ "num-traits",
+ "stm32f4",
+ "userlib",
+ "zerocopy",
+]
+
+[[package]]
+name = "drv-piezo-element-api"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+ "userlib",
+ "zerocopy",
+]
+
+[[package]]
 name = "drv-spi-api"
 version = "0.1.0"
 dependencies = [
@@ -2358,6 +2382,15 @@ dependencies = [
  "ringbuf",
  "userlib",
  "zerocopy",
+]
+
+[[package]]
+name = "task-jukebox"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "drv-piezo-element-api",
+ "userlib",
 ]
 
 [[package]]
