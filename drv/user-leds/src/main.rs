@@ -42,7 +42,7 @@ enum Op {
 
 cfg_if::cfg_if! {
     // Target boards with 4 leds
-    if #[cfg(any(target_board = "gemini-bu-1", target_board = "gimletlet-2"))] {
+    if #[cfg(any(target_board = "gemini-bu-1", target_board = "gimletlet-2", target_board = "stm32f4-discovery"))] {
         #[derive(FromPrimitive)]
         enum Led {
             Zero = 0,
@@ -114,6 +114,7 @@ fn main() -> ! {
     }
 }
 
+/*
 ///////////////////////////////////////////////////////////////////////////////
 // The STM32F3/4 specific bits.
 //
@@ -247,6 +248,92 @@ fn led_toggle(led: Led) {
             }
         }
     }
+}
+*/
+cfg_if::cfg_if! {
+    if #[cfg(all(feature = "stm32f4", target_board = "stm32f4-discovery"))] {
+        task_slot!(GPIO, gpio_driver);
+
+        cfg_if::cfg_if! {
+            if #[cfg(target_board = "stm32f4-discovery")] {
+                // STM32F411 DISCOVERY kit: LEDs are on D12, D13, D14, and D15.
+                const LEDS: &[(drv_stm32fx_gpio_api::PinSet, bool)] = &[
+                    (drv_stm32fx_gpio_api::Port::D.pin(12), false),
+                    (drv_stm32fx_gpio_api::Port::D.pin(13), false),
+                    (drv_stm32fx_gpio_api::Port::D.pin(14), false),
+                    (drv_stm32fx_gpio_api::Port::D.pin(15), false),
+                ];
+            } else {
+                compile_error!("no LED mapping for unknown board");
+            }
+        }
+    }
+}
+
+#[cfg(all(feature = "stm32f4", target_board = "stm32f4-discovery"))]
+fn enable_led_pins() {
+    use drv_stm32fx_gpio_api::*;
+
+    let gpio_driver = GPIO.get_task_id();
+    let gpio_driver = Gpio::from(gpio_driver);
+
+    for &(pinset, active_low) in LEDS {
+        // Make sure LEDs are initially off.
+        gpio_driver.set_to(pinset, active_low).unwrap();
+        // Make them outputs.
+        gpio_driver
+            .configure_output(
+                pinset,
+                OutputType::PushPull,
+                Speed::High,
+                Pull::None,
+            )
+            .unwrap();
+    }
+}
+
+#[cfg(all(feature = "stm32f4", target_board = "stm32f4-discovery"))]
+fn led_info(led: Led) -> (drv_stm32fx_gpio_api::PinSet, bool) {
+    match led {
+        Led::Zero => LEDS[0],
+        Led::One => LEDS[1],
+        Led::Two => LEDS[2],
+        Led::Three => LEDS[3],
+    }
+}
+
+#[cfg(all(feature = "stm32f4", target_board = "stm32f4-discovery"))]
+fn led_on(led: Led) {
+    use drv_stm32fx_gpio_api::*;
+
+    let gpio_driver = GPIO.get_task_id();
+    let gpio_driver = Gpio::from(gpio_driver);
+
+    let (pinset, active_low) = led_info(led);
+    gpio_driver.set_to(pinset, !active_low).unwrap();
+}
+
+#[cfg(all(feature = "stm32f4", target_board = "stm32f4-discovery"))]
+fn led_off(led: Led) {
+    use drv_stm32fx_gpio_api::*;
+
+    let gpio_driver = GPIO.get_task_id();
+    let gpio_driver = Gpio::from(gpio_driver);
+
+    let (pinset, active_low) = led_info(led);
+
+    gpio_driver.set_to(pinset, active_low).unwrap();
+}
+
+#[cfg(all(feature = "stm32f4", target_board = "stm32f4-discovery"))]
+fn led_toggle(led: Led) {
+    use drv_stm32fx_gpio_api::*;
+
+    let gpio_driver = GPIO.get_task_id();
+    let gpio_driver = Gpio::from(gpio_driver);
+
+    let pinset = led_info(led).0;
+    gpio_driver.toggle(pinset.port, pinset.pin_mask).unwrap();
 }
 
 ///////////////////////////////////////////////////////////////////////////////

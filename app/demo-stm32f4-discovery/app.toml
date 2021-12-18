@@ -53,6 +53,16 @@ requires = {flash = 8192, ram = 1024}
 uses = ["rcc"]
 start = true
 
+[tasks.gpio_driver]
+path = "../../drv/stm32fx-gpio"
+name = "drv-stm32fx-gpio"
+features = ["f411"]
+priority = 2
+requires = {flash = 8192, ram = 1024}
+uses = ["gpiod"]
+start = true
+task-slots = ["rcc_driver"]
+
 [tasks.usart_driver]
 path = "../../drv/stm32fx-usart"
 name = "drv-stm32fx-usart"
@@ -67,12 +77,12 @@ task-slots = ["rcc_driver"]
 [tasks.user_leds]
 path = "../../drv/user-leds"
 name = "drv-user-leds"
-features = ["stm32f4"]
+features = ["stm32f4-gpio"]
 priority = 2
 requires = {flash = 16384, ram = 1024}
 uses = ["gpiod"]
 start = true
-task-slots = ["rcc_driver"]
+task-slots = ["gpio_driver"]
 
 [tasks.ping]
 path = "../../task/ping"
