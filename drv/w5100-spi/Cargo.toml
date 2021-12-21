@@ -1,0 +1,24 @@
+[package]
+name = "drv-w5100-spi"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+cortex-m = {version = "0.7", features = ["inline-asm"]}
+userlib = {path = "../../sys/userlib", features = ["panic-messages", "log-itm"]}
+drv-spi-api = {path = "../spi-api"}
+
+[features]
+default = ["standalone"]
+standalone = []
+
+# a target for `cargo xtask check`
+[package.metadata.build]
+target = "thumbv7em-none-eabihf"
+
+[[bin]]
+name = "drv-w5100-spi"
+test = false
+bench = false

@@ -1,0 +1,20 @@
+[package]
+name = "drv-stm32fx-spi"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+#zerocopy = "0.6.1"
+#num-traits = { version = "0.2.12", default-features = false }
+vcell = "0.1.2"
+stm32f4 = { version = "0.13.0", default-features = false }
+
+# TODO can probably remove standalone feature for lib crates
+[features]
+default = ["standalone"]
+standalone = [ "f411" ]
+f411 = ["stm32f4/stm32f411"]
+
+# a target for `cargo xtask check`
+[package.metadata.build]
+target = "thumbv7em-none-eabihf"

@@ -1,0 +1,43 @@
+[package]
+name = "drv-stm32fx-spi-server"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+userlib = {path = "../../sys/userlib", features = ["panic-messages", "log-itm"]}
+ringbuf = {path = "../../lib/ringbuf"}
+zerocopy = "0.6.1"
+num-traits = { version = "0.2.12", default-features = false }
+drv-stm32fx-spi = {path = "../stm32fx-spi", default-features = false}
+drv-stm32fx-rcc-api = {path = "../stm32fx-rcc-api", default-features = false}
+drv-stm32fx-gpio-api = {path = "../stm32fx-gpio-api", default-features = false}
+drv-spi-api = {path = "../spi-api", default-features = false}
+cortex-m = { version = "0.7", features = ["inline-asm"] }
+stm32f4 = { version = "0.13.0", default-features = false }
+cfg-if = "0.1.10"
+idol-runtime = {git = "https://github.com/oxidecomputer/idolatry.git"}
+
+[build-dependencies]
+build-util = {path = "../../build/util"}
+idol = {git = "https://github.com/oxidecomputer/idolatry.git"}
+
+[features]
+default = ["standalone"]
+standalone = ["f411"]
+spi1 = []
+spi2 = []
+spi3 = []
+spi4 = []
+spi5 = []
+f411 = ["stm32f4/stm32f411", "drv-stm32fx-spi/f411"]
+
+# a target for `cargo xtask check`
+[package.metadata.build]
+target = "thumbv7em-none-eabihf"
+
+# This section is here to discourage RLS/rust-analyzer from doing test builds,
+# since test builds don't work for cross compilation.
+[[bin]]
+name = "drv-stm32fx-spi-server"
+test = false
+bench = false

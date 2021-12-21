@@ -44,6 +44,8 @@ members = [
     "drv/stm32fx-usart",
     "drv/stm32fx-gpio",
     "drv/stm32fx-gpio-api",
+    "drv/stm32fx-spi",
+    "drv/stm32fx-spi-server",
 
     "drv/stm32h7-gpio",
     "drv/stm32h7-gpio-api",
@@ -75,6 +77,7 @@ members = [
     "drv/gimlet-hf-api",
     "drv/piezo-element",
     "drv/piezo-element-api",
+    "drv/w5100-spi",
 
     "test/tests-gemini-bu",
     "test/tests-gemini-bu-rot",
