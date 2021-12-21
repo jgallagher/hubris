@@ -733,7 +733,10 @@ dependencies = [
  "cortex-m",
  "drv-stm32fx-gpio-api",
  "drv-stm32fx-rcc-api",
+ "idol",
+ "idol-runtime",
  "num-traits",
+ "static_assertions",
  "stm32f4",
  "userlib",
  "zerocopy",
@@ -743,6 +746,7 @@ dependencies = [
 name = "drv-piezo-element-api"
 version = "0.1.0"
 dependencies = [
+ "idol",
  "num-traits",
  "userlib",
  "zerocopy",

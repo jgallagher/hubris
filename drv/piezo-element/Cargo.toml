@@ -12,9 +12,12 @@ num-traits = { version = "0.2.12", default-features = false }
 drv-stm32fx-gpio-api = {path = "../stm32fx-gpio-api", optional = true}
 drv-stm32fx-rcc-api = {path = "../../drv/stm32fx-rcc-api"}
 cfg-if = "0.1.10"
+idol-runtime = {git = "https://github.com/oxidecomputer/idolatry.git"}
+static_assertions = "1.1"
 
 [build-dependencies]
 build-util = {path = "../../build/util"}
+idol = {git = "https://github.com/oxidecomputer/idolatry.git"}
 
 [features]
 default = ["standalone"]

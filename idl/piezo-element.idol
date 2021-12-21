@@ -1,0 +1,25 @@
+// Piezo element driver IPC API
+
+Interface(
+    name: "Piezo",
+    ops: {
+        "piezo_on": (
+            args: {
+                "freq_hz": "u16",
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("PiezoError"),
+            ),
+            idempotent: true,
+        ),
+        "piezo_off": (
+            //args: {},
+            reply: Result(
+                ok: "()",
+                err: CLike("PiezoError"),
+            ),
+            idempotent: true,
+        ),
+    },
+)

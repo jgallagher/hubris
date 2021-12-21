@@ -5,7 +5,7 @@
 #![no_std]
 #![no_main]
 
-use drv_piezo_element_api::PiezoElement;
+use drv_piezo_element_api::Piezo;
 use userlib::*;
 
 mod songs;
@@ -17,7 +17,7 @@ task_slot!(PIEZO, piezo_element);
 #[export_name = "main"]
 pub fn main() -> ! {
     let piezo = PIEZO.get_task_id();
-    let piezo = PiezoElement::from(piezo);
+    let piezo = Piezo::from(piezo);
 
     let mut dl = 0;
     loop {
@@ -29,7 +29,7 @@ pub fn main() -> ! {
     }
 }
 
-fn play_song(piezo: &PiezoElement, song: &Song<'_>, dl: &mut u64) {
+fn play_song(piezo: &Piezo, song: &Song<'_>, dl: &mut u64) {
     for note in song.notes {
         let duration = note.duration.sixteenths() * song.sixteenth_ms;
 

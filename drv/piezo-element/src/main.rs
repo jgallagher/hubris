@@ -24,27 +24,33 @@
 #![no_std]
 #![no_main]
 
+use core::mem;
+use idol_runtime::RequestError;
+use static_assertions::const_assert_eq;
 use userlib::*;
 use zerocopy::AsBytes;
 
 task_slot!(GPIO, gpio_driver);
 task_slot!(RCC, rcc_driver);
 
-#[derive(FromPrimitive)]
-enum Op {
-    On = 1,
-    Off = 2,
-}
-
+#[derive(Copy, Clone, Debug, FromPrimitive)]
 #[repr(u32)]
-enum ResponseCode {
+pub enum PiezoError {
     FrequencyTooLow = 1,
-    BadArg = 2,
 }
 
-impl From<ResponseCode> for u32 {
-    fn from(rc: ResponseCode) -> Self {
-        rc as u32
+impl From<u32> for PiezoError {
+    fn from(x: u32) -> Self {
+        match x {
+            1 => PiezoError::FrequencyTooLow,
+            _ => panic!(),
+        }
+    }
+}
+
+impl From<PiezoError> for u16 {
+    fn from(x: PiezoError) -> Self {
+        x as u16
     }
 }
 
@@ -56,29 +62,33 @@ fn main() -> ! {
     // Field messages.
     // Ensure our buffer is aligned properly for a u16 by declaring it as one.
     let mut buffer = 0u16;
+    const_assert_eq!(mem::size_of::<u16>(), idl::INCOMING_SIZE);
+    let mut server = ServerImpl { timer };
     loop {
-        hl::recv_without_notification(
-            buffer.as_bytes_mut(),
-            |op, msg| -> Result<(), ResponseCode> {
-                match op {
-                    Op::On => {
-                        let (msg, caller) = msg
-                            .fixed::<u16, ()>()
-                            .ok_or(ResponseCode::BadArg)?;
-                        timer.set_frequency(*msg)?;
-                        caller.reply(());
-                    }
-                    Op::Off => {
-                        let (_msg, caller) = msg
-                            .fixed::<(), ()>()
-                            .ok_or(ResponseCode::BadArg)?;
-                        timer.disable();
-                        caller.reply(());
-                    }
-                }
-                Ok(())
-            },
-        );
+        idol_runtime::dispatch(buffer.as_bytes_mut(), &mut server);
+    }
+}
+
+struct ServerImpl {
+    timer: Timer,
+}
+
+impl idl::InOrderPiezoImpl for ServerImpl {
+    fn piezo_on(
+        &mut self,
+        _: &RecvMessage,
+        freq_hz: u16,
+    ) -> Result<(), RequestError<PiezoError>> {
+        self.timer.set_frequency(freq_hz)?;
+        Ok(())
+    }
+
+    fn piezo_off(
+        &mut self,
+        _: &RecvMessage,
+    ) -> Result<(), RequestError<PiezoError>> {
+        self.timer.disable();
+        Ok(())
     }
 }
 
@@ -126,7 +136,7 @@ impl Timer {
         self.0.arr.write(|w| w.arr().bits(1));
     }
 
-    fn set_frequency(self, freq: u16) -> Result<(), ResponseCode> {
+    fn set_frequency(self, freq: u16) -> Result<(), PiezoError> {
         // We set our timer to 1MHz, so need to set arr to (1MHz / freq - 1). If
         // freq is < 16, this division won't fit in a u16; we could change the
         // prescaler to handle low frequencies, but for now we'll just punt and
@@ -134,7 +144,7 @@ impl Timer {
         const TIMER_FREQ: u32 = 1_000_000;
 
         if freq < 16 {
-            return Err(ResponseCode::FrequencyTooLow);
+            return Err(PiezoError::FrequencyTooLow);
         }
 
         let arr = ((TIMER_FREQ / u32::from(freq)) - 1) as u16;
@@ -162,4 +172,11 @@ fn enable_output_pin() {
             Alternate::AF2, // Tim3 channel 1
         )
         .unwrap();
+}
+
+#[allow(dead_code)] // TODO we only use `INCOMING_SIZE` in a const assert, which the compiler thinks is dead?
+mod idl {
+    use super::PiezoError;
+
+    include!(concat!(env!("OUT_DIR"), "/server_stub.rs"));
 }
