@@ -1,0 +1,47 @@
+// STM32FX RCC IPC API
+
+Interface(
+    name: "Rcc",
+    ops: {
+        "enable_clock_raw": (
+            args: {
+                "peripheral": "u32",
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("RccError"),
+            ),
+            idempotent: true,
+        ),
+        "disable_clock_raw": (
+            args: {
+                "peripheral": "u32",
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("RccError"),
+            ),
+            idempotent: true,
+        ),
+        "enter_reset_raw": (
+            args: {
+                "peripheral": "u32",
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("RccError"),
+            ),
+            idempotent: true,
+        ),
+        "leave_reset_raw": (
+            args: {
+                "peripheral": "u32",
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("RccError"),
+            ),
+            idempotent: true,
+        ),
+    },
+)

@@ -56,16 +56,11 @@ use stm32f3::stm32f303 as device;
 #[cfg(feature = "stm32f4")]
 use stm32f4::stm32f407 as device;
 
+use core::mem;
+use idol_runtime::RequestError;
+use static_assertions::const_assert_eq;
 use userlib::*;
 use zerocopy::AsBytes;
-
-#[derive(FromPrimitive)]
-enum Op {
-    EnableClock = 1,
-    DisableClock = 2,
-    EnterReset = 3,
-    LeaveReset = 4,
-}
 
 #[derive(FromPrimitive)]
 enum Bus {
@@ -76,14 +71,24 @@ enum Bus {
     Apb2 = 4,
 }
 
+#[derive(Copy, Clone, Debug, FromPrimitive)]
 #[repr(u32)]
-enum ResponseCode {
-    BadArg = 2,
+pub enum RccError {
+    NoSuchPeripheral = 1,
 }
 
-impl From<ResponseCode> for u32 {
-    fn from(rc: ResponseCode) -> Self {
-        rc as u32
+impl From<u32> for RccError {
+    fn from(x: u32) -> Self {
+        match x {
+            1 => RccError::NoSuchPeripheral,
+            _ => panic!(),
+        }
+    }
+}
+
+impl From<RccError> for u16 {
+    fn from(x: RccError) -> Self {
+        x as u16
     }
 }
 
@@ -119,105 +124,135 @@ fn main() -> ! {
     // Field messages.
     // Ensure our buffer is aligned properly for a u32 by declaring it as one.
     let mut buffer = [0u32; 1];
+    // TODO The `4 *` shouldn't be necessary; https://github.com/oxidecomputer/idolatry/issues/4
+    const_assert_eq!(4 * mem::size_of::<[u32; 1]>(), idl::INCOMING_SIZE);
+    let mut server = ServerImpl { rcc };
     loop {
-        hl::recv_without_notification(
-            buffer.as_bytes_mut(),
-            |op, msg| -> Result<(), ResponseCode> {
-                // Every incoming message uses the same payload type and
-                // response type: it's always u32 -> (). So we can do the
-                // check-and-convert here:
-                let (msg, caller) =
-                    msg.fixed::<u32, ()>().ok_or(ResponseCode::BadArg)?;
-                let pmask: u32 = 1 << (msg % 32);
-                let bus =
-                    Bus::from_u32(msg / 32).ok_or(ResponseCode::BadArg)?;
-
-                // Note: you're probably looking at the match arms below and
-                // saying to yourself, "gosh, I bet we could eliminate some
-                // duplication here." Well, good luck. svd2rust has ensured that
-                // every *ENR and *RSTR register is a *totally distinct type*,
-                // meaning we can't operate on them generically.
-                //
-                // STMF3 boards only have the single AHB bus, so error out
-                // if any other bus is requested
-                match op {
-                    Op::EnableClock => match bus {
-                        #[cfg(feature = "stm32f3")]
-                        Bus::Ahb1 => set_bits!(rcc.ahbenr, pmask),
-                        #[cfg(feature = "stm32f3")]
-                        Bus::Ahb2 | Bus::Ahb3 => {
-                            return Err(ResponseCode::BadArg)
-                        }
-
-                        #[cfg(feature = "stm32f4")]
-                        Bus::Ahb1 => set_bits!(rcc.ahb1enr, pmask),
-                        #[cfg(feature = "stm32f4")]
-                        Bus::Ahb2 => set_bits!(rcc.ahb2enr, pmask),
-                        #[cfg(feature = "stm32f4")]
-                        Bus::Ahb3 => set_bits!(rcc.ahb3enr, pmask),
-
-                        Bus::Apb1 => set_bits!(rcc.apb1enr, pmask),
-                        Bus::Apb2 => set_bits!(rcc.apb2enr, pmask),
-                    },
-                    Op::DisableClock => match bus {
-                        #[cfg(feature = "stm32f3")]
-                        Bus::Ahb1 => clear_bits!(rcc.ahbenr, pmask),
-                        #[cfg(feature = "stm32f3")]
-                        Bus::Ahb2 | Bus::Ahb3 => {
-                            return Err(ResponseCode::BadArg)
-                        }
-
-                        #[cfg(feature = "stm32f4")]
-                        Bus::Ahb1 => clear_bits!(rcc.ahb1enr, pmask),
-                        #[cfg(feature = "stm32f4")]
-                        Bus::Ahb2 => clear_bits!(rcc.ahb2enr, pmask),
-                        #[cfg(feature = "stm32f4")]
-                        Bus::Ahb3 => clear_bits!(rcc.ahb3enr, pmask),
-
-                        Bus::Apb1 => clear_bits!(rcc.apb1enr, pmask),
-                        Bus::Apb2 => clear_bits!(rcc.apb2enr, pmask),
-                    },
-                    Op::EnterReset => match bus {
-                        #[cfg(feature = "stm32f3")]
-                        Bus::Ahb1 => set_bits!(rcc.ahbrstr, pmask),
-                        #[cfg(feature = "stm32f3")]
-                        Bus::Ahb2 | Bus::Ahb3 => {
-                            return Err(ResponseCode::BadArg)
-                        }
-
-                        #[cfg(feature = "stm32f4")]
-                        Bus::Ahb1 => set_bits!(rcc.ahb1rstr, pmask),
-                        #[cfg(feature = "stm32f4")]
-                        Bus::Ahb2 => set_bits!(rcc.ahb2rstr, pmask),
-                        #[cfg(feature = "stm32f4")]
-                        Bus::Ahb3 => set_bits!(rcc.ahb3rstr, pmask),
-
-                        Bus::Apb1 => set_bits!(rcc.apb1rstr, pmask),
-                        Bus::Apb2 => set_bits!(rcc.apb2rstr, pmask),
-                    },
-                    Op::LeaveReset => match bus {
-                        #[cfg(feature = "stm32f3")]
-                        Bus::Ahb1 => clear_bits!(rcc.ahbrstr, pmask),
-                        #[cfg(feature = "stm32f3")]
-                        Bus::Ahb2 | Bus::Ahb3 => {
-                            return Err(ResponseCode::BadArg)
-                        }
-
-                        #[cfg(feature = "stm32f4")]
-                        Bus::Ahb1 => clear_bits!(rcc.ahb1rstr, pmask),
-                        #[cfg(feature = "stm32f4")]
-                        Bus::Ahb2 => clear_bits!(rcc.ahb2rstr, pmask),
-                        #[cfg(feature = "stm32f4")]
-                        Bus::Ahb3 => clear_bits!(rcc.ahb3rstr, pmask),
-
-                        Bus::Apb1 => clear_bits!(rcc.apb1rstr, pmask),
-                        Bus::Apb2 => clear_bits!(rcc.apb2rstr, pmask),
-                    },
-                }
-
-                caller.reply(());
-                Ok(())
-            },
-        );
+        idol_runtime::dispatch(buffer.as_bytes_mut(), &mut server);
     }
+}
+
+struct ServerImpl<'a> {
+    rcc: &'a device::rcc::RegisterBlock,
+}
+
+impl ServerImpl<'_> {
+    fn unpack_raw(raw: u32) -> Result<(Bus, u32), RequestError<RccError>> {
+        let pmask: u32 = 1 << (raw % 32);
+        let bus = Bus::from_u32(raw / 32).ok_or(RccError::NoSuchPeripheral)?;
+        Ok((bus, pmask))
+    }
+}
+
+impl idl::InOrderRccImpl for ServerImpl<'_> {
+    fn enable_clock_raw(
+        &mut self,
+        _: &RecvMessage,
+        raw: u32,
+    ) -> Result<(), RequestError<RccError>> {
+        match Self::unpack_raw(raw)? {
+            #[cfg(feature = "stm32f3")]
+            (Bus::Ahb1, pmask) => set_bits!(self.rcc.ahbenr, pmask),
+            #[cfg(feature = "stm32f3")]
+            (Bus::Ahb2 | Bus::Ahb3, _) => {
+                return Err(RccError::NoSuchPeripheral)
+            }
+
+            #[cfg(feature = "stm32f4")]
+            (Bus::Ahb1, pmask) => set_bits!(self.rcc.ahb1enr, pmask),
+            #[cfg(feature = "stm32f4")]
+            (Bus::Ahb2, pmask) => set_bits!(self.rcc.ahb2enr, pmask),
+            #[cfg(feature = "stm32f4")]
+            (Bus::Ahb3, pmask) => set_bits!(self.rcc.ahb3enr, pmask),
+
+            (Bus::Apb1, pmask) => set_bits!(self.rcc.apb1enr, pmask),
+            (Bus::Apb2, pmask) => set_bits!(self.rcc.apb2enr, pmask),
+        }
+        Ok(())
+    }
+
+    fn disable_clock_raw(
+        &mut self,
+        _: &RecvMessage,
+        raw: u32,
+    ) -> Result<(), RequestError<RccError>> {
+        match Self::unpack_raw(raw)? {
+            #[cfg(feature = "stm32f3")]
+            (Bus::Ahb1, pmask) => clear_bits!(self.rcc.ahbenr, pmask),
+            #[cfg(feature = "stm32f3")]
+            (Bus::Ahb2 | Bus::Ahb3, _) => {
+                return Err(RccError::NoSuchPeripheral)
+            }
+
+            #[cfg(feature = "stm32f4")]
+            (Bus::Ahb1, pmask) => clear_bits!(self.rcc.ahb1enr, pmask),
+            #[cfg(feature = "stm32f4")]
+            (Bus::Ahb2, pmask) => clear_bits!(self.rcc.ahb2enr, pmask),
+            #[cfg(feature = "stm32f4")]
+            (Bus::Ahb3, pmask) => clear_bits!(self.rcc.ahb3enr, pmask),
+
+            (Bus::Apb1, pmask) => clear_bits!(self.rcc.apb1enr, pmask),
+            (Bus::Apb2, pmask) => clear_bits!(self.rcc.apb2enr, pmask),
+        }
+        Ok(())
+    }
+
+    fn enter_reset_raw(
+        &mut self,
+        _: &RecvMessage,
+        raw: u32,
+    ) -> Result<(), RequestError<RccError>> {
+        match Self::unpack_raw(raw)? {
+            #[cfg(feature = "stm32f3")]
+            (Bus::Ahb1, pmask) => set_bits!(self.rcc.ahbrstr, pmask),
+            #[cfg(feature = "stm32f3")]
+            (Bus::Ahb2 | Bus::Ahb3, _) => {
+                return Err(RccError::NoSuchPeripheral)
+            }
+
+            #[cfg(feature = "stm32f4")]
+            (Bus::Ahb1, pmask) => set_bits!(self.rcc.ahb1rstr, pmask),
+            #[cfg(feature = "stm32f4")]
+            (Bus::Ahb2, pmask) => set_bits!(self.rcc.ahb2rstr, pmask),
+            #[cfg(feature = "stm32f4")]
+            (Bus::Ahb3, pmask) => set_bits!(self.rcc.ahb3rstr, pmask),
+
+            (Bus::Apb1, pmask) => set_bits!(self.rcc.apb1rstr, pmask),
+            (Bus::Apb2, pmask) => set_bits!(self.rcc.apb2rstr, pmask),
+        }
+        Ok(())
+    }
+
+    fn leave_reset_raw(
+        &mut self,
+        _: &RecvMessage,
+        raw: u32,
+    ) -> Result<(), RequestError<RccError>> {
+        match Self::unpack_raw(raw)? {
+            #[cfg(feature = "stm32f3")]
+            (Bus::Ahb1, pmask) => clear_bits!(self.rcc.ahbrstr, pmask),
+            #[cfg(feature = "stm32f3")]
+            (Bus::Ahb2 | Bus::Ahb3, _) => {
+                return Err(RccError::NoSuchPeripheral)
+            }
+
+            #[cfg(feature = "stm32f4")]
+            (Bus::Ahb1, pmask) => clear_bits!(self.rcc.ahb1rstr, pmask),
+            #[cfg(feature = "stm32f4")]
+            (Bus::Ahb2, pmask) => clear_bits!(self.rcc.ahb2rstr, pmask),
+            #[cfg(feature = "stm32f4")]
+            (Bus::Ahb3, pmask) => clear_bits!(self.rcc.ahb3rstr, pmask),
+
+            (Bus::Apb1, pmask) => clear_bits!(self.rcc.apb1rstr, pmask),
+            (Bus::Apb2, pmask) => clear_bits!(self.rcc.apb2rstr, pmask),
+        }
+        Ok(())
+    }
+}
+
+#[allow(dead_code)] // TODO we only use `INCOMING_SIZE` in a const assert, which the compiler thinks is dead?
+mod idl {
+    use super::RccError;
+
+    include!(concat!(env!("OUT_DIR"), "/server_stub.rs"));
 }

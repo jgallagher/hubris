@@ -786,7 +786,10 @@ dependencies = [
 name = "drv-stm32fx-rcc"
 version = "0.1.0"
 dependencies = [
+ "idol",
+ "idol-runtime",
  "num-traits",
+ "static_assertions",
  "stm32f3",
  "stm32f4",
  "userlib",
@@ -798,6 +801,7 @@ name = "drv-stm32fx-rcc-api"
 version = "0.1.0"
 dependencies = [
  "byteorder",
+ "idol",
  "num-traits",
  "userlib",
  "zerocopy",
@@ -2277,6 +2281,12 @@ dependencies = [
  "sha2",
  "zerocopy",
 ]
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "stm32f3"

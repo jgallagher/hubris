@@ -6,39 +6,18 @@
 
 #![no_std]
 
-use core::cell::Cell;
-
-use byteorder::LittleEndian;
-use zerocopy::{AsBytes, U32};
-
 use userlib::*;
-
-enum Op {
-    EnableClock = 1,
-    DisableClock = 2,
-    EnterReset = 3,
-    LeaveReset = 4,
-}
-
-#[derive(Clone, Debug)]
-pub struct Rcc(Cell<TaskId>);
-
-impl From<TaskId> for Rcc {
-    fn from(t: TaskId) -> Self {
-        Self(Cell::new(t))
-    }
-}
 
 #[derive(Copy, Clone, Debug)]
 #[repr(u32)]
 pub enum RccError {
-    BadArg = 2,
+    NoSuchPeripheral = 1,
 }
 
 impl From<u32> for RccError {
     fn from(x: u32) -> Self {
         match x {
-            2 => RccError::BadArg,
+            1 => RccError::NoSuchPeripheral,
             // Panicking here might be rude. TODO.
             _ => panic!(),
         }
@@ -60,20 +39,6 @@ impl Rcc {
         self.enable_clock_raw(peripheral as u32).unwrap()
     }
 
-    pub fn enable_clock_raw(&self, index: u32) -> Result<(), RccError> {
-        #[derive(AsBytes)]
-        #[repr(C)]
-        struct Request(U32<LittleEndian>);
-
-        impl hl::Call for Request {
-            const OP: u16 = Op::EnableClock as u16;
-            type Response = ();
-            type Err = RccError;
-        }
-
-        hl::send_with_retry(&self.0, &Request(U32::new(index)))
-    }
-
     /// Requests that the clock to a peripheral be turned off.
     ///
     /// This operation is idempotent and will be retried automatically should
@@ -86,20 +51,6 @@ impl Rcc {
         // We are unwrapping here because the RCC server should not return
         // BadArg for a valid member of the Peripheral enum.
         self.disable_clock_raw(peripheral as u32).unwrap()
-    }
-
-    pub fn disable_clock_raw(&self, index: u32) -> Result<(), RccError> {
-        #[derive(AsBytes)]
-        #[repr(C)]
-        struct Request(U32<LittleEndian>);
-
-        impl hl::Call for Request {
-            const OP: u16 = Op::DisableClock as u16;
-            type Response = ();
-            type Err = RccError;
-        }
-
-        hl::send_with_retry(&self.0, &Request(U32::new(index)))
     }
 
     /// Requests that the reset line to a peripheral be asserted.
@@ -116,20 +67,6 @@ impl Rcc {
         self.enter_reset_raw(peripheral as u32).unwrap()
     }
 
-    pub fn enter_reset_raw(&self, index: u32) -> Result<(), RccError> {
-        #[derive(AsBytes)]
-        #[repr(C)]
-        struct Request(U32<LittleEndian>);
-
-        impl hl::Call for Request {
-            const OP: u16 = Op::EnterReset as u16;
-            type Response = ();
-            type Err = RccError;
-        }
-
-        hl::send_with_retry(&self.0, &Request(U32::new(index)))
-    }
-
     /// Requests that the reset line to a peripheral be deasserted.
     ///
     /// This operation is idempotent and will be retried automatically should
@@ -142,20 +79,6 @@ impl Rcc {
         // We are unwrapping here because the RCC server should not return
         // BadArg for a valid member of the Peripheral enum.
         self.leave_reset_raw(peripheral as u32).unwrap()
-    }
-
-    pub fn leave_reset_raw(&self, index: u32) -> Result<(), RccError> {
-        #[derive(AsBytes)]
-        #[repr(C)]
-        struct Request(U32<LittleEndian>);
-
-        impl hl::Call for Request {
-            const OP: u16 = Op::LeaveReset as u16;
-            type Response = ();
-            type Err = RccError;
-        }
-
-        hl::send_with_retry(&self.0, &Request(U32::new(index)))
     }
 }
 
@@ -214,7 +137,7 @@ macro_rules! apb2 {
 ///
 /// STM32F4 PART    SECTION
 /// 11              6.3.9
-#[derive(Copy, Clone, Eq, PartialEq, Debug, FromPrimitive, AsBytes)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 #[repr(u32)]
 pub enum Peripheral {
     Dma2 = ahb1!(22),
@@ -255,3 +178,5 @@ pub enum Peripheral {
     Usart1 = apb2!(4),
     Tim1 = apb2!(0),
 }
+
+include!(concat!(env!("OUT_DIR"), "/client_stub.rs"));
