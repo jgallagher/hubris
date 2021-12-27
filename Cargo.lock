@@ -1023,8 +1023,11 @@ dependencies = [
 name = "drv-w5100-spi"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "cortex-m",
  "drv-spi-api",
+ "num-traits",
+ "ringbuf",
  "userlib",
 ]
 
