@@ -74,15 +74,15 @@ start = true
 interrupts = {38 = 1}
 task-slots = ["rcc_driver"]
 
-[tasks.user_leds]
-path = "../../drv/user-leds"
-name = "drv-user-leds"
-features = ["stm32f4-gpio"]
-priority = 2
-requires = {flash = 16384, ram = 1024}
-uses = ["gpiod"]
-start = true
-task-slots = ["gpio_driver"]
+#[tasks.user_leds]
+#path = "../../drv/user-leds"
+#name = "drv-user-leds"
+#features = ["stm32f4-gpio"]
+#priority = 2
+#requires = {flash = 8192, ram = 1024}
+#uses = ["gpiod"]
+#start = true
+#task-slots = ["gpio_driver"]
 
 #[tasks.ping]
 #path = "../../task/ping"
@@ -94,15 +94,15 @@ task-slots = ["gpio_driver"]
 #start = true
 #task-slots = [{peer = "pong"}, "usart_driver"]
 
-[tasks.pong]
-path = "../../task/pong"
-name = "task-pong"
-priority = 3
-requires = {flash = 8192, ram = 512}
-start = true
-stacksize = 512
-task-slots = ["user_leds"]
-
+#[tasks.pong]
+#path = "../../task/pong"
+#name = "task-pong"
+#priority = 3
+#requires = {flash = 8192, ram = 512}
+#start = true
+#stacksize = 512
+#task-slots = ["user_leds"]
+#
 [tasks.hiffy]
 path = "../../task/hiffy"
 name = "task-hiffy"
@@ -134,7 +134,7 @@ task-slots = ["piezo_element"]
 [tasks.spi2_driver]
 path = "../../drv/stm32fx-spi-server"
 name = "drv-stm32fx-spi-server"
-priority = 2
+priority = 10
 requires = {flash = 16384, ram = 4096}
 features = ["f411", "spi2"]
 uses = ["spi2"]
@@ -146,11 +146,20 @@ task-slots = ["gpio_driver", "rcc_driver"]
 [tasks.w5100_driver]
 path = "../../drv/w5100-spi"
 name = "drv-w5100-spi"
-priority = 3
+priority = 11
 requires = {flash = 32768, ram = 4096}
 start = true
 stacksize = 1024
 task-slots = ["spi2_driver"]
+
+[tasks.w5100_echo]
+path = "../../task/w5100-echo"
+name = "task-w5100-echo"
+priority = 12
+requires = {flash=16384, ram=2048}
+start = true
+stacksize = 2048
+task-slots = ["w5100_driver"]
 
 [tasks.idle]
 path = "../../task/idle"

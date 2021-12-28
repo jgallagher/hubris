@@ -2,8 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-#![allow(dead_code)] // TODO remove
-use crate::Error;
+use crate::W5100Error;
 use bitflags::bitflags;
 use drv_spi_api::{CsState, SpiDevice};
 use userlib::*;
@@ -13,10 +12,10 @@ mod spi_stream;
 
 use self::spi_stream::SpiStream;
 
-pub(crate) use self::socket::{SocketIndex, Socket};
 pub(crate) use self::socket::Command as SocketCommand;
 pub(crate) use self::socket::Mode as SocketMode;
 pub(crate) use self::socket::Status as SocketStatus;
+pub(crate) use self::socket::{Socket, SocketIndex};
 
 // There is a total of 8KiB tx and 8KiB rx buffer space. We support:
 //  1 socket with 8KiB tx/rx
@@ -26,6 +25,7 @@ pub(crate) use self::socket::Status as SocketStatus;
 // hardware, but not us (for now?).
 #[derive(Copy, Clone)]
 #[repr(u8)]
+#[allow(dead_code)] // We don't expose this and hard-code a single one to use
 pub(crate) enum SocketConfig {
     OneSocket8Kib,
     TwoSockets4KiB,
@@ -51,7 +51,7 @@ impl W5100 {
         device: SpiDevice,
         socket_config: SocketConfig,
         mac: [u8; 6],
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, W5100Error> {
         let this = Self {
             device,
             socket_config,
@@ -69,7 +69,7 @@ impl W5100 {
     pub(crate) fn set_network_config(
         &self,
         network_config: &NetworkConfig,
-    ) -> Result<(), Error> {
+    ) -> Result<(), W5100Error> {
         match network_config {
             NetworkConfig::Static {
                 ip,
@@ -84,7 +84,7 @@ impl W5100 {
         Ok(())
     }
 
-    fn reset_raw(&self) -> Result<(), Error> {
+    fn reset_raw(&self) -> Result<(), W5100Error> {
         self.write_reg(WriteableRegister::Mr(Mode::RESET))?;
 
         // Wait until Mr register is reset
@@ -95,10 +95,10 @@ impl W5100 {
             hl::sleep_for(1);
         }
 
-        Err(Error::ResetFailed)
+        Err(W5100Error::ResetFailed)
     }
 
-    fn confirm_reset(&self) -> Result<(), Error> {
+    fn confirm_reset(&self) -> Result<(), W5100Error> {
         // attempt to read/write MR; this serves as a sanity check on our SPI
         // setup and presence of the device.
         for mode in [
@@ -108,13 +108,13 @@ impl W5100 {
         ] {
             self.write_reg(WriteableRegister::Mr(mode))?;
             if self.read_reg_u8(ReadableRegisterU8::Mr)? != mode.bits() {
-                return Err(Error::ResetFailed);
+                return Err(W5100Error::ResetFailed);
             }
         }
         Ok(())
     }
 
-    fn configure_socket_buffers(&self) -> Result<(), Error> {
+    fn configure_socket_buffers(&self) -> Result<(), W5100Error> {
         // See RMSR docs in W5100 datasheet
         let mask = match self.socket_config {
             SocketConfig::OneSocket8Kib => 0x03,
@@ -126,11 +126,11 @@ impl W5100 {
         Ok(())
     }
 
-    fn configure_mac_address(&self, mac: [u8; 6]) -> Result<(), Error> {
+    fn configure_mac_address(&self, mac: [u8; 6]) -> Result<(), W5100Error> {
         self.write_reg(WriteableRegister::Shar(mac))
     }
 
-    fn write_reg(&self, reg: WriteableRegister) -> Result<(), Error> {
+    fn write_reg(&self, reg: WriteableRegister) -> Result<(), W5100Error> {
         match reg {
             WriteableRegister::Mr(mode) => {
                 self.write_raw(0x0000, &[mode.bits()])
@@ -144,14 +144,14 @@ impl W5100 {
         }
     }
 
-    fn read_reg_u8(&self, reg: ReadableRegisterU8) -> Result<u8, Error> {
+    fn read_reg_u8(&self, reg: ReadableRegisterU8) -> Result<u8, W5100Error> {
         let addr = match reg {
             ReadableRegisterU8::Mr => 0x0000,
         };
         self.read_u8(addr)
     }
 
-    fn write_raw(&self, addr: u16, data: &[u8]) -> Result<(), Error> {
+    fn write_raw(&self, addr: u16, data: &[u8]) -> Result<(), W5100Error> {
         // We never try to write 0 bytes.
         assert!(!data.is_empty());
 
@@ -167,19 +167,44 @@ impl W5100 {
         Ok(())
     }
 
-    fn read_u8(&self, addr: u16) -> Result<u8, Error> {
+    fn write_raw_lease(
+        &self,
+        addr: u16,
+        len: u16,
+        buf: &idol_runtime::Leased<idol_runtime::R, [u8]>,
+        pos: usize,
+    ) -> Result<(), idol_runtime::RequestError<W5100Error>> {
+        // We never try to write 0 bytes, and `len` should fit in `buf` starting at `pos`.
+        assert!(len > 0);
+        assert!(usize::from(len) <= buf.len() - pos);
+
+        let mut cmd = SpiStream::write(addr, 0);
+        for i in 0..usize::from(len) {
+            cmd.set_data(buf.read_at(pos + i).ok_or(
+                idol_runtime::RequestError::Fail(
+                    idol_runtime::ClientError::WentAway,
+                ),
+            )?);
+            self.exchange_raw(&cmd)?;
+            cmd.increment_addr();
+        }
+
+        Ok(())
+    }
+
+    fn read_u8(&self, addr: u16) -> Result<u8, W5100Error> {
         let mut out = [0];
         self.read_raw(addr, &mut out)?;
         Ok(out[0])
     }
 
-    fn read_u16(&self, addr: u16) -> Result<u16, Error> {
+    fn read_u16(&self, addr: u16) -> Result<u16, W5100Error> {
         let mut out = [0; 2];
         self.read_raw(addr, &mut out)?;
         Ok(u16::from_be_bytes(out))
     }
 
-    fn read_raw(&self, addr: u16, out: &mut [u8]) -> Result<(), Error> {
+    fn read_raw(&self, addr: u16, out: &mut [u8]) -> Result<(), W5100Error> {
         // We never try to read 0 bytes.
         assert!(!out.is_empty());
 
@@ -194,7 +219,32 @@ impl W5100 {
         Ok(())
     }
 
-    fn exchange_raw(&self, cmd: &SpiStream) -> Result<u8, Error> {
+    fn read_raw_lease(
+        &self,
+        addr: u16,
+        len: u16,
+        lease: &idol_runtime::Leased<idol_runtime::W, [u8]>,
+        pos: usize,
+    ) -> Result<(), idol_runtime::RequestError<W5100Error>> {
+        // We never try to read 0 bytes, and `len` should fit in `lease` starting at `pos`.
+        assert!(len > 0);
+        assert!(usize::from(len) <= lease.len() - pos);
+
+        let mut cmd = SpiStream::read(addr);
+        for i in 0..usize::from(len) {
+            let value = self.exchange_raw(&cmd)?;
+            lease.write_at(pos + i, value).map_err(|()| {
+                idol_runtime::RequestError::Fail(
+                    idol_runtime::ClientError::WentAway,
+                )
+            })?;
+            cmd.increment_addr(); // increments addr on last iteration; should we guard this with an `if` or break the loop up like we do in `read_raw()`?
+        }
+
+        Ok(())
+    }
+
+    fn exchange_raw(&self, cmd: &SpiStream) -> Result<u8, W5100Error> {
         let mut out = [0; 4];
 
         // W5100 requires us to assert/deassert CS around each 32-bit stream

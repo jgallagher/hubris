@@ -12,6 +12,11 @@ cortex-m = {version = "0.7", features = ["inline-asm"]}
 num-traits = {version = "0.2", default-features = false}
 userlib = {path = "../../sys/userlib", features = ["panic-messages", "log-itm"]}
 drv-spi-api = {path = "../spi-api"}
+idol-runtime = {git = "https://github.com/oxidecomputer/idolatry.git"}
+zerocopy = "0.6.1"
+
+[build-dependencies]
+idol = {git = "https://github.com/oxidecomputer/idolatry.git"}
 
 [features]
 default = ["standalone"]

@@ -1026,9 +1026,24 @@ dependencies = [
  "bitflags",
  "cortex-m",
  "drv-spi-api",
+ "idol",
+ "idol-runtime",
  "num-traits",
  "ringbuf",
  "userlib",
+ "zerocopy",
+]
+
+[[package]]
+name = "drv-w5100-spi-api"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "drv-spi-api",
+ "idol",
+ "num-traits",
+ "userlib",
+ "zerocopy",
 ]
 
 [[package]]
@@ -2572,6 +2587,15 @@ dependencies = [
  "ringbuf",
  "userlib",
  "zerocopy",
+]
+
+[[package]]
+name = "task-w5100-echo"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "drv-w5100-spi-api",
+ "userlib",
 ]
 
 [[package]]

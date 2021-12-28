@@ -38,6 +38,7 @@ members = [
     "task/thermal",
 
     "task/jukebox",
+    "task/w5100-echo",
 
     "drv/stm32fx-rcc",
     "drv/stm32fx-rcc-api",
@@ -78,6 +79,7 @@ members = [
     "drv/piezo-element",
     "drv/piezo-element-api",
     "drv/w5100-spi",
+    "drv/w5100-spi-api",
 
     "test/tests-gemini-bu",
     "test/tests-gemini-bu-rot",

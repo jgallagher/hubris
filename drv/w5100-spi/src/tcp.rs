@@ -1,6 +1,6 @@
 use crate::{
     w5100::{Socket, SocketCommand, SocketIndex, SocketMode, SocketStatus},
-    Error, W5100,
+    W5100Error, W5100,
 };
 use core::marker::PhantomData;
 use ringbuf::{ringbuf, ringbuf_entry};
@@ -34,7 +34,7 @@ impl<'a> TcpSocket<'a, Init> {
         device: &'a W5100,
         socket_index: SocketIndex,
         source_port: u16,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, W5100Error> {
         let socket = Socket::new(device, socket_index);
 
         socket.set_mode(SocketMode::PROTO_TCP)?;
@@ -49,13 +49,13 @@ impl<'a> TcpSocket<'a, Init> {
                     marker: PhantomData,
                 })
             }
-            _ => Err(Error::OpenFailed),
+            _ => Err(W5100Error::OpenFailed),
         }
     }
 }
 
 impl<'a> TcpSocket<'a, Init> {
-    pub(crate) fn listen(mut self) -> Result<TcpSocket<'a, Listening>, Error> {
+    pub(crate) fn listen(self) -> Result<TcpSocket<'a, Listening>, W5100Error> {
         self.socket.send_command(SocketCommand::Listen)?;
         match self.socket.status()? {
             SocketStatus::Listen => {
@@ -64,7 +64,7 @@ impl<'a> TcpSocket<'a, Init> {
             }
             _ => {
                 ringbuf_entry!(Trace::Error(self.socket.index()));
-                self.fail(Error::ListenFailed)
+                self.fail(W5100Error::ListenFailed)
             }
         }
     }
@@ -72,8 +72,8 @@ impl<'a> TcpSocket<'a, Init> {
 
 impl<'a> TcpSocket<'a, Listening> {
     pub(crate) fn accept(
-        mut self,
-    ) -> Result<TcpSocket<'a, Established>, Error> {
+        self,
+    ) -> Result<TcpSocket<'a, Established>, W5100Error> {
         // TODO interrupts; for now busy wait
         loop {
             match self.socket.status()? {
@@ -88,7 +88,7 @@ impl<'a> TcpSocket<'a, Listening> {
                 other => {
                     // This shouldn't be possible (although not specified in datasheet) (?)
                     ringbuf_entry!(Trace::Error(self.socket.index()));
-                    return self.fail(Error::BadSocketState(other as u8));
+                    return self.fail(W5100Error::BadSocketState(other as u8));
                 }
             }
         }
@@ -96,7 +96,7 @@ impl<'a> TcpSocket<'a, Listening> {
 }
 
 impl<'a> TcpSocket<'a, Established> {
-    pub(crate) fn close(mut self) -> Result<(), Error> {
+    pub(crate) fn close(self) -> Result<(), W5100Error> {
         ringbuf_entry!(Trace::Disconnect(self.socket.index()));
         self.socket.send_command(SocketCommand::Disconnect)?;
 
@@ -108,17 +108,22 @@ impl<'a> TcpSocket<'a, Established> {
     }
 
     // Returns number of bytes written.
-    pub(crate) fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+    pub(crate) fn write(
+        &self,
+        buf: &idol_runtime::Leased<idol_runtime::R, [u8]>,
+    ) -> Result<usize, idol_runtime::RequestError<W5100Error>> {
         // Make sure we're still connected
         match self.socket.status()? {
             SocketStatus::Established => (), // what we expect to be
             SocketStatus::CloseWait => {
                 // peer requested close
                 ringbuf_entry!(Trace::PeerClosed(self.socket.index()));
-                return self.fail(Error::PeerClosed);
+                return self.fail(W5100Error::PeerClosed).map_err(Into::into);
             }
             other => {
-                return self.fail(Error::BadSocketState(other as u8));
+                return self
+                    .fail(W5100Error::BadSocketState(other as u8))
+                    .map_err(Into::into);
             }
         }
 
@@ -129,12 +134,21 @@ impl<'a> TcpSocket<'a, Established> {
                 ringbuf_entry!(Trace::Write(self.socket.index(), n));
                 Ok(n)
             }
-            Err(err) => self.fail(err),
+            Err(err @ idol_runtime::RequestError::Fail(_)) => {
+                // client task failed; server impl will handle cleanup
+                return Err(err);
+            }
+            Err(idol_runtime::RequestError::Runtime(err)) => {
+                return self.fail(err).map_err(Into::into);
+            }
         }
     }
 
     // Returns number of bytes read; 0 if peer has closed the connection.
-    pub(crate) fn read(&mut self, out: &mut [u8]) -> Result<usize, Error> {
+    pub(crate) fn read(
+        &self,
+        out: &idol_runtime::Leased<idol_runtime::W, [u8]>,
+    ) -> Result<usize, idol_runtime::RequestError<W5100Error>> {
         ringbuf_entry!(Trace::StartRead(self.socket.index(), out.len()));
         loop {
             // Make sure we're still connected
@@ -146,7 +160,9 @@ impl<'a> TcpSocket<'a, Established> {
                     return Ok(0);
                 }
                 other => {
-                    return self.fail(Error::BadSocketState(other as u8));
+                    return self
+                        .fail(W5100Error::BadSocketState(other as u8))
+                        .map_err(Into::into);
                 }
             }
 
@@ -159,23 +175,26 @@ impl<'a> TcpSocket<'a, Established> {
                     ringbuf_entry!(Trace::Read(self.socket.index(), n));
                     return Ok(n);
                 }
-                Err(err) => {
-                    return self.fail(err);
+                Err(err @ idol_runtime::RequestError::Fail(_)) => {
+                    // client task failed; server impl will handle cleanup
+                    return Err(err);
+                }
+                Err(idol_runtime::RequestError::Runtime(err)) => {
+                    return self.fail(err).map_err(Into::into);
                 }
             }
-
         }
     }
 }
 
 impl<'a, T> TcpSocket<'a, T> {
-    fn fail<U>(&mut self, error: Error) -> Result<U, Error> {
+    fn fail<U>(&self, error: W5100Error) -> Result<U, W5100Error> {
         ringbuf_entry!(Trace::Error(self.socket.index()));
         self.close_raw()?;
         Err(error)
     }
 
-    fn close_raw(&mut self) -> Result<(), Error> {
+    pub(crate) fn close_raw(&self) -> Result<(), W5100Error> {
         ringbuf_entry!(Trace::Close(self.socket.index()));
         self.socket.send_command(SocketCommand::Close)
     }

@@ -1,4 +1,4 @@
-use super::{Error, SocketConfig, W5100};
+use super::{SocketConfig, W5100Error, W5100};
 use bitflags::bitflags;
 use userlib::FromPrimitive;
 
@@ -57,13 +57,19 @@ pub(crate) enum Command {
     Recv = 0x40,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, FromPrimitive)]
 #[repr(u8)]
 pub(crate) enum SocketIndex {
     Zero = 0,
     One = 1,
     Two = 2,
     Three = 3,
+}
+
+impl From<SocketIndex> for u8 {
+    fn from(idx: SocketIndex) -> Self {
+        idx as u8
+    }
 }
 
 pub(crate) struct Socket<'a> {
@@ -76,10 +82,7 @@ pub(crate) struct Socket<'a> {
 }
 
 impl<'a> Socket<'a> {
-    pub(crate) fn new(
-        device: &'a W5100,
-        index: SocketIndex,
-    ) -> Self {
+    pub(crate) fn new(device: &'a W5100, index: SocketIndex) -> Self {
         let index = index as u16;
 
         let register_offset = index << 8;
@@ -112,37 +115,39 @@ impl<'a> Socket<'a> {
         (self.register_offset >> 8) as u8
     }
 
-    pub(crate) fn status(&self) -> Result<Status, Error> {
+    pub(crate) fn status(&self) -> Result<Status, W5100Error> {
         let status_raw = self.read_reg_u8(ReadableSocketRegisterU8::Sr)?;
         Status::from_u8(status_raw)
-            .ok_or(Error::UnknownSocketStatus(status_raw))
+            .ok_or(W5100Error::UnknownSocketStatus(status_raw))
     }
 
-    pub(crate) fn set_mode(&self, mode: Mode) -> Result<(), Error> {
+    pub(crate) fn set_mode(&self, mode: Mode) -> Result<(), W5100Error> {
         self.write_reg(WriteableSocketRegister::Mr(mode))
     }
 
-    pub(crate) fn send_command(&self, command: Command) -> Result<(), Error> {
+    pub(crate) fn send_command(
+        &self,
+        command: Command,
+    ) -> Result<(), W5100Error> {
         self.write_reg(WriteableSocketRegister::Cr(command))
     }
 
-    pub(crate) fn set_source_port(&self, port: u16) -> Result<(), Error> {
+    pub(crate) fn set_source_port(&self, port: u16) -> Result<(), W5100Error> {
         self.write_reg(WriteableSocketRegister::Port(port))
     }
 
     // Read up to `out.len()` bytes from this socket's RX buffer and informs the
     // device we've received it. Returns `Ok(0)` if there is no data in the
     // buffer; this does not mean there may not be data in the future.
-    pub(crate) fn recv(&self, out: &mut [u8]) -> Result<usize, Error> {
+    pub(crate) fn recv(
+        &self,
+        out: &idol_runtime::Leased<idol_runtime::W, [u8]>,
+    ) -> Result<usize, idol_runtime::RequestError<W5100Error>> {
         let nready = self.read_reg_u16(ReadableSocketRegisterU16::RxRsr)?;
+        let nready = usize::min(out.len(), usize::from(nready)) as u16;
         if nready == 0 {
             return Ok(0);
         }
-
-        // cap both `nready` and `out.len()` to the min of the two
-        let nready = usize::min(out.len(), usize::from(nready));
-        let out = &mut out[..nready];
-        let nready = nready as u16; // guaranteed to fit since it was previously a u16 and we took a min
 
         let rd_pointer = self.read_reg_u16(ReadableSocketRegisterU16::RxRd)?;
 
@@ -150,12 +155,25 @@ impl<'a> Socket<'a> {
         if offset + nready > self.rx_size {
             // available data wraps around; read to the end first, then from the beginning
             let to_end = self.rx_size - offset;
-
-            let (out1, out2) = out.split_at_mut(usize::from(to_end));
-            self.device.read_raw(self.rx_addr + offset, out1)?;
-            self.device.read_raw(self.rx_addr, out2)?;
+            self.device.read_raw_lease(
+                self.rx_addr + offset,
+                to_end,
+                out,
+                0,
+            )?;
+            self.device.read_raw_lease(
+                self.rx_addr,
+                nready - to_end,
+                out,
+                usize::from(to_end),
+            )?;
         } else {
-            self.device.read_raw(self.rx_addr + offset, out)?;
+            self.device.read_raw_lease(
+                self.rx_addr + offset,
+                nready,
+                out,
+                0,
+            )?;
         }
 
         // update read pointer and inform device we've consumed data
@@ -168,16 +186,15 @@ impl<'a> Socket<'a> {
 
     // Write up to `buf.len()` bytes into this socket's TX buffer and instructs
     // the device to send it. Returns the number of bytes written on success.
-    pub(crate) fn send(&self, buf: &[u8]) -> Result<usize, Error> {
+    pub(crate) fn send(
+        &self,
+        buf: &idol_runtime::Leased<idol_runtime::R, [u8]>,
+    ) -> Result<usize, idol_runtime::RequestError<W5100Error>> {
         let tx_free = self.read_reg_u16(ReadableSocketRegisterU16::TxFsr)?;
+        let tx_free = usize::min(buf.len(), usize::from(tx_free)) as u16;
         if tx_free == 0 {
             return Ok(0);
         }
-
-        // cap both `tx_free` and `buf.len()` to the min of the two
-        let tx_free = usize::min(buf.len(), usize::from(tx_free));
-        let buf = &buf[..tx_free];
-        let tx_free = tx_free as u16; // guaranteed to fit since it was previously a u16 and we took a min
 
         let tx_pointer = self.read_reg_u16(ReadableSocketRegisterU16::TxWr)?;
         let offset = tx_pointer & (self.tx_size - 1);
@@ -186,11 +203,25 @@ impl<'a> Socket<'a> {
             // available space wraps around; write to end first, then to beginning
             let to_end = self.tx_size - offset;
 
-            let (buf1, buf2) = buf.split_at(usize::from(to_end));
-            self.device.write_raw(self.tx_addr + offset, buf1)?;
-            self.device.write_raw(self.tx_addr, buf2)?;
+            self.device.write_raw_lease(
+                self.tx_addr + offset,
+                to_end,
+                buf,
+                0,
+            )?;
+            self.device.write_raw_lease(
+                self.tx_addr,
+                tx_free - to_end,
+                buf,
+                usize::from(to_end),
+            )?;
         } else {
-            self.device.write_raw(self.tx_addr + offset, buf)?;
+            self.device.write_raw_lease(
+                self.tx_addr + offset,
+                tx_free,
+                buf,
+                0,
+            )?;
         }
 
         // update write pointer and inform device we've inserted data
@@ -201,7 +232,10 @@ impl<'a> Socket<'a> {
         Ok(usize::from(tx_free))
     }
 
-    fn write_reg(&self, reg: WriteableSocketRegister) -> Result<(), Error> {
+    fn write_reg(
+        &self,
+        reg: WriteableSocketRegister,
+    ) -> Result<(), W5100Error> {
         match reg {
             WriteableSocketRegister::Mr(mode) => self
                 .device
@@ -221,7 +255,10 @@ impl<'a> Socket<'a> {
         }
     }
 
-    fn read_reg_u8(&self, reg: ReadableSocketRegisterU8) -> Result<u8, Error> {
+    fn read_reg_u8(
+        &self,
+        reg: ReadableSocketRegisterU8,
+    ) -> Result<u8, W5100Error> {
         let mut addr = match reg {
             ReadableSocketRegisterU8::Sr => 0x0403,
         };
@@ -232,7 +269,7 @@ impl<'a> Socket<'a> {
     fn read_reg_u16(
         &self,
         reg: ReadableSocketRegisterU16,
-    ) -> Result<u16, Error> {
+    ) -> Result<u16, W5100Error> {
         let mut addr = match reg {
             ReadableSocketRegisterU16::TxFsr => 0x0420,
             ReadableSocketRegisterU16::TxWr => 0x0424,

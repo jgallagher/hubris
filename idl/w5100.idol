@@ -1,0 +1,63 @@
+// W5100 driver IPC interface
+
+Interface(
+    name: "W5100Driver",
+    ops: {
+        "tcp_open": (
+            doc: "Open a TCP socket",
+            args: {
+                "source_port": "u16",
+            },
+            reply: Result(
+                ok: "u8",
+                err: CLike("W5100Error"),
+            ),
+        ),
+        "tcp_accept": (
+            doc: "Accept an incoming connection on an open TCP socket",
+            args: {
+                "socket": "u8",
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("W5100Error"),
+            ),
+        ),
+        "tcp_read": (
+            doc: "Read bytes from an established TCP connection",
+            args: {
+                "socket": "u8",
+            },
+            leases: {
+                "buf": (type: "[u8]", write: true, max_len: Some(8192)),
+            },
+            reply: Result(
+                ok: "usize",
+                err: CLike("W5100Error"),
+            ),
+        ),
+        "tcp_write": (
+            doc: "Write bytes to an established TCP connection",
+            args: {
+                "socket": "u8",
+            },
+            leases: {
+                "buf": (type: "[u8]", read: true, max_len: Some(8192)),
+            },
+            reply: Result(
+                ok: "usize",
+                err: CLike("W5100Error"),
+            ),
+        ),
+        "tcp_close": ( 
+            doc: "Close an open TCP socket",
+            args: {
+                "socket": "u8",
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("W5100Error"),
+            ),
+        ),
+    }
+)
