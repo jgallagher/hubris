@@ -8,13 +8,23 @@ fn note_to_freq(n: u8) -> u16 {
     hz.round() as u16
 }
 
-fn main() {
-    let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    let mut fh = File::create(out.join("piano.rs")).unwrap();
-    writeln!(fh, "const PIANO_NOTES_HZ: [u16; 88] = [").unwrap();
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let out = &PathBuf::from(
+        env::var_os("OUT_DIR").ok_or("missing OUT_DIR env var")?,
+    );
+    let mut fh = File::create(out.join("piano.rs"))?;
+    writeln!(fh, "const PIANO_NOTES_HZ: [u16; 88] = [")?;
     for i in 1..=88 {
-        writeln!(fh, "    {},", note_to_freq(i)).unwrap();
+        writeln!(fh, "    {},", note_to_freq(i))?;
     }
-    writeln!(fh, "];").unwrap();
-    fh.flush().unwrap();
+    writeln!(fh, "];")?;
+    fh.flush()?;
+
+    idol::server::build_server_support(
+        "../../idl/jukebox.idol",
+        "server_stub.rs",
+        idol::server::ServerStyle::InOrder,
+    )?;
+
+    Ok(())
 }

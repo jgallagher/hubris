@@ -1,0 +1,25 @@
+[package]
+name = "task-jukebox-tcp"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+cortex-m = { version = "0.7", features = ["inline-asm"] }
+userlib = {path = "../../sys/userlib", features = ["panic-messages", "log-itm"]}
+drv-w5100-spi-api = {path = "../../drv/w5100-spi-api"}
+task-jukebox-api = {path = "../jukebox-api"}
+
+[features]
+default = ["standalone"]
+standalone = []
+
+# a target for `cargo xtask check`
+[package.metadata.build]
+target = "thumbv7em-none-eabihf"
+
+# This section is here to discourage RLS/rust-analyzer from doing test builds,
+# since test builds don't work for cross compilation.
+[[bin]]
+name = "task-jukebox-tcp"
+test = false
+bench = false

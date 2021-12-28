@@ -8,8 +8,15 @@ build = "build.rs"
 
 [dependencies]
 cortex-m = {version = "0.7", features = ["inline-asm"]}
-userlib = {path = "../../sys/userlib", features = ["panic-messages", "log-itm"]}
+userlib = {path = "../../sys/userlib", features = ["panic-messages"]}
 drv-piezo-element-api = {path = "../../drv/piezo-element-api"}
+zerocopy = "0.6.1"
+idol-runtime = {git = "https://github.com/oxidecomputer/idolatry.git"}
+num-traits = {version = "0.2", default-features = false}
+task-jukebox-api = {path = "../jukebox-api"}
+
+[build-dependencies]
+idol = {git = "https://github.com/oxidecomputer/idolatry.git"}
 
 [features]
 default = ["standalone"]

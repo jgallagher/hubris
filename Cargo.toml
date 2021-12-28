@@ -38,6 +38,8 @@ members = [
     "task/thermal",
 
     "task/jukebox",
+    "task/jukebox-api",
+    "task/jukebox-tcp",
     "task/w5100-echo",
 
     "drv/stm32fx-rcc",

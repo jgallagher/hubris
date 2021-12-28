@@ -2507,6 +2507,31 @@ version = "0.1.0"
 dependencies = [
  "cortex-m",
  "drv-piezo-element-api",
+ "idol",
+ "idol-runtime",
+ "num-traits",
+ "task-jukebox-api",
+ "userlib",
+ "zerocopy",
+]
+
+[[package]]
+name = "task-jukebox-api"
+version = "0.1.0"
+dependencies = [
+ "idol",
+ "num-traits",
+ "userlib",
+ "zerocopy",
+]
+
+[[package]]
+name = "task-jukebox-tcp"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "drv-w5100-spi-api",
+ "task-jukebox-api",
  "userlib",
 ]
 

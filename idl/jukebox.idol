@@ -1,0 +1,17 @@
+// Jukebox task IPC interface
+
+Interface(
+    name: "Jukebox",
+    ops: {
+        "play_song": (
+            doc: "Play song specified by the given index",
+            args: {
+                "song_index": "usize",
+            },
+            reply: Result(
+                ok: "()",
+                err: CLike("JukeboxError"),
+            ),
+        ),
+    }
+)
