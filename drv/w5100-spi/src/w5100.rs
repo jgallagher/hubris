@@ -249,23 +249,7 @@ impl W5100 {
 
         // W5100 requires us to assert/deassert CS around each 32-bit stream
         let _lock = self.device.lock_auto(CsState::Asserted)?;
-
-        // We should be able to do this:
-        //
-        // ```
-        // self.device.exchange(cmd.as_bytes(), &mut out)?;
-        // ```
-        //
-        // but we sporadically get stuck in SPI rx if we do - maybe something
-        // flaky with w5100 if our tx gets too far ahead of rx? Arduino ethernet
-        // library has this same workaround for this chip: only tx/rx a single
-        // byte at a time.
-        //
-        // Might be able to revist this once we add interrupt support to our SPI
-        // driver?
-        for (cmd, buf) in cmd.as_bytes().chunks(1).zip(out.chunks_mut(1)) {
-            self.device.exchange(cmd, buf)?;
-        }
+        self.device.exchange(cmd.as_bytes(), &mut out)?;
         Ok(out[3])
     }
 }

@@ -302,24 +302,8 @@ impl ServerImpl {
         // Make sure SPI is on.
         self.spi.enable();
 
-        // As you might expect, we will work from byte 0 to the end
-        // of each buffer. There are two complications:
-        //
-        // 1. Transmit and receive can be at different positions --
-        //    transmit will tend to lead receive, because the SPI
-        //    unit contains FIFOs.
-        //
-        // 2. We're only keeping track of position in the buffers
-        //    we're using: both tx and rx are `Option<(Borrow,
-        //    u16)>`.
-
-        // Tack a position field onto whichever borrows actually
-        // exist.
-        let mut tx = data_src.map(|borrow| (borrow, 0));
-        let mut rx = data_dest.map(|borrow| (borrow, 0));
-
         // Enable interrupt on the conditions we're interested in.
-        // TODO
+        // TODO?
         // self.spi.enable_transfer_interrupts();
 
         // We're doing this! Check if we need to control CS.
@@ -330,84 +314,42 @@ impl ServerImpl {
                 .unwrap();
         }
 
-        // While work remains, we'll attempt to move up to one byte
-        // in each direction, sleeping if we can do neither.
-        while tx.is_some() || rx.is_some() {
-            // Entering RECV to check for interrupts is not free, so
-            // we only do it if we've filled the TX FIFO and emptied
-            // the RX and repeating this loop would just burn power
-            // and CPU. If there is any potential value to repeating
-            // the loop immediately, we'll set this flag.
-            let mut made_progress = false;
-
-            if let Some((tx_data, tx_pos)) = &mut tx {
-                while self.spi.can_tx() {
-                    // If our position is less than our tx len,
-                    // transfer a byte from caller to TX FIFO --
-                    // otherwise put a dummy byte on the wire
-                    let byte: u8 = if *tx_pos < src_len {
-                        tx_data
-                            .read_at(usize::from(*tx_pos))
-                            .ok_or(RequestError::went_away())?
-                    } else {
-                        0u8
-                    };
-
-                    ringbuf_entry!(Trace::Tx(*tx_pos, byte));
-                    self.spi.send8(byte);
-                    *tx_pos += 1;
-                    made_progress = true;
-
-                    // If we have _just_ finished...
-                    if *tx_pos == src_len {
-                        // We will finish transmitting well before
-                        // we're done receiving, so stop getting
-                        // interrupt notifications for transmit
-                        // space available during that time.
-                        // TODO
-                        //self.spi.disable_can_tx_interrupt();
-                        tx = None;
-                        break;
-                    }
+        // Our SPI buffer is only a single byte, so in each iteration of the
+        // loop we tx 1 byte then rx 1 byte, busy-waiting if necessary. (TODO do
+        // interrupts make sense with a 1-byte buffer?)
+        for i in 0..overall_len {
+            // Get data byte, or send 0 as a dummy value if we have none left.
+            let byte = data_src.as_ref().map_or(Ok(0), |tx_data| {
+                if i < src_len {
+                    tx_data
+                        .read_at(usize::from(i))
+                        .ok_or(RequestError::went_away())
+                } else {
+                    Ok(0)
                 }
-            }
+            })?;
 
-            if let Some((rx_data, rx_pos)) = &mut rx {
-                if self.spi.can_rx() {
-                    // Transfer byte from RX FIFO to caller.
+            // busy wait until we can tx
+            while !self.spi.can_tx() {}
+            ringbuf_entry!(Trace::Tx(i, byte));
+            self.spi.send8(byte);
+
+            if let Some(rx_data) = &data_dest {
+                if i < dest_len {
+                    // busy wait until we can rx
+                    while !self.spi.can_rx() {}
                     let b = self.spi.recv8();
                     rx_data
-                        .write_at(usize::from(*rx_pos), b)
+                        .write_at(usize::from(i), b)
                         .map_err(|_| RequestError::went_away())?;
-                    ringbuf_entry!(Trace::Rx(*rx_pos, b));
-                    *rx_pos += 1;
-
-                    if *rx_pos == dest_len {
-                        rx = None;
-                    }
-
-                    made_progress = true;
+                    ringbuf_entry!(Trace::Rx(i, b));
                 }
             }
-
-            // TODO interrupts; for now busy wait
-            if !made_progress {
-                while self.spi.busy() || (!self.spi.can_tx() && !self.spi.can_rx()) {}
-            }
-            /*
-            if !made_progress {
-                // Allow the controller interrupt to post to our
-                // notification set.
-                sys_irq_control(IRQ_MASK, true);
-                // Wait for our notification set to get, well, set.
-                sys_recv_closed(&mut [], IRQ_MASK, TaskId::KERNEL)
-                    .expect("kernel died?");
-            }
-            */
         }
 
-        // TODO interrupts; for now busy wait
-        while self.spi.busy() {}
+        // TODO? Since we tx/rx 1 byte at a time, we know we're done now and
+        // don't need to wait for completion like stm32h7's driver (which uses
+        // the built-in FIFOs on that chip), right?
         /*
         // Wait for the final EOT interrupt to ensure we're really
         // done before returning to the client
@@ -423,11 +365,17 @@ impl ServerImpl {
         }
         */
 
-        // TODO should we clear errors here? We don't have a real "end" like
-        // stm32h7.
-        // Wrap up the transfer and restore things to a reasonable
-        // state.
-        //self.spi.end();
+        // Check for (and clear) the rx overrun bit, which can only occur if we
+        // transmitted more data than we received (i.e., `dest_len <
+        // overall_len`).
+        if self.spi.is_overrun() {
+            // sanity check that overrun should be possible
+            assert!(dest_len < overall_len);
+            // clear overrun by reading DR then SR
+            let _ = self.spi.recv8();
+            let _ = self.spi.read_status();
+            assert!(!self.spi.is_overrun());
+        }
 
         // Deassert (set) CS.
         if !cs_override {

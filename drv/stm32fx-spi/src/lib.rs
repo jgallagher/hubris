@@ -119,6 +119,10 @@ impl Spi {
         self.reg.cr1.modify(|_, w| w.spe().clear_bit());
     }
 
+    pub fn read_status(&self) -> u32 {
+        self.reg.sr.read().bits()
+    }
+
     pub fn can_rx(&self) -> bool {
         let sr = self.reg.sr.read();
         sr.rxne().bit()
@@ -132,6 +136,11 @@ impl Spi {
     pub fn busy(&self) -> bool {
         let sr = self.reg.sr.read();
         sr.bsy().bit()
+    }
+
+    pub fn is_overrun(&self) -> bool {
+        let sr = self.reg.sr.read();
+        sr.ovr().bit()
     }
 
     pub fn send16(&self, word: u16) {
